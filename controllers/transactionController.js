@@ -171,10 +171,23 @@ const updateTransaction = async (req, res) => {
             throw new NotFoundError('Transaction not found');
         }
 
-        // Validate transaction has walletId
-        if (!transaction.walletId) {
-            console.log('Transaction data:', JSON.stringify(transaction, null, 2));
-            throw new Error('Transaction is missing walletId');
+        // If walletId is missing, use the one from the request
+        if (!transaction.walletId && walletId) {
+            console.log('Adding missing walletId to transaction:', walletId);
+            transaction.walletId = walletId;
+        } else if (!transaction.walletId) {
+            // If no walletId in transaction and none provided in request, find default wallet
+            const defaultWallet = await Wallet.findOne({
+                userId: req.user.userId,
+                isDefault: true
+            });
+            
+            if (!defaultWallet) {
+                throw new Error('No default wallet found. Please provide a walletId.');
+            }
+            
+            console.log('Using default wallet:', defaultWallet._id);
+            transaction.walletId = defaultWallet._id;
         }
 
         // Get old wallet and new wallet (if changed)
