@@ -3,7 +3,7 @@ const Category = require('../models/Category');
 const jwt = require('jsonwebtoken');
 const ErrorResponse = require('../utils/errorResponse');
 const Wallet = require('../models/Wallet');
-const { BadRequestError, UnauthorizedError } = require('../errors');
+const { BadRequestError, UnauthorizedError, NotFoundError } = require('../errors');
 
 // Default categories to create for new users
 const defaultCategories = [
@@ -135,8 +135,31 @@ const getCurrentUser = async (req, res) => {
   }
 };
 
+// Verify token and get current user
+const verifyToken = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('-password');
+    if (!user) {
+      throw new NotFoundError('User not found');
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        id: user._id,
+        name: user.name,
+        email: user.email
+      }
+    });
+  } catch (error) {
+    console.error('Token verification error:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   register,
   login,
-  getCurrentUser
+  getCurrentUser,
+  verifyToken
 };
