@@ -31,7 +31,48 @@ app.use('/api/category', categoryRoutes);
 app.use('/api/wallets', walletRoutes);
 
 // Error handler (should be last piece of middleware)
-app.use(errorHandler);
+app.use((err, req, res, next) => {
+    console.error(err);
+
+    // Handle custom errors
+    if (err.statusCode) {
+        return res.status(err.statusCode).json({
+            success: false,
+            error: err.message
+        });
+    }
+
+    // Handle mongoose validation errors
+    if (err.name === 'ValidationError') {
+        const messages = Object.values(err.errors).map(val => val.message);
+        return res.status(400).json({
+            success: false,
+            error: messages
+        });
+    }
+
+    // Handle mongoose duplicate key errors
+    if (err.code === 11000) {
+        return res.status(400).json({
+            success: false,
+            error: 'Duplicate field value entered'
+        });
+    }
+
+    // Handle mongoose cast errors
+    if (err.name === 'CastError') {
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid ID format'
+        });
+    }
+
+    // Default error
+    res.status(500).json({
+        success: false,
+        error: 'Server Error'
+    });
+});
 
 const PORT = process.env.PORT || 5000;
 

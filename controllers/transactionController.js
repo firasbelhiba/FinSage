@@ -1,176 +1,212 @@
 const Transaction = require('../models/Transaction');
-const ErrorResponse = require('../utils/errorResponse');
+const Wallet = require('../models/Wallet');
+const { BadRequestError, NotFoundError } = require('../errors');
 
-// Get all transactions for the logged-in user
-exports.getTransactions = async (req, res, next) => {
-  try {
-    const { month, year, type, category } = req.query;
-    
-    // Build query
-    const query = { userId: req.user.id };
-    
+// Get all transactions
+const getTransactions = async (req, res) => {
+    const { month, year, type, category, walletId } = req.query;
+    const query = { userId: req.user.userId };
+
     // Add filters if provided
     if (month && year) {
-      const startDate = new Date(year, month - 1, 1);
-      const endDate = new Date(year, month, 0);
-      query.date = { $gte: startDate, $lte: endDate };
+        const startDate = new Date(year, month - 1, 1);
+        const endDate = new Date(year, month, 0);
+        query.date = { $gte: startDate, $lte: endDate };
     }
-    
-    if (type) {
-      query.type = type;
-    }
-    
-    if (category) {
-      query.category = category;
-    }
+    if (type) query.type = type;
+    if (category) query.category = category;
+    if (walletId) query.walletId = walletId;
 
-    const transactions = await Transaction.find(query)
-      .sort({ date: -1 });
-    
+    const transactions = await Transaction.find(query).sort({ date: -1 });
+
     // Calculate totals
     const totals = transactions.reduce((acc, transaction) => {
-      if (transaction.type === 'income') {
-        acc.income += transaction.amount;
-      } else {
-        acc.expense += transaction.amount;
-      }
-      return acc;
+        if (transaction.type === 'income') {
+            acc.income += transaction.amount;
+        } else {
+            acc.expense += transaction.amount;
+        }
+        return acc;
     }, { income: 0, expense: 0 });
 
-    res.json({
-      success: true,
-      count: transactions.length,
-      totals,
-      data: transactions
+    res.status(200).json({
+        success: true,
+        count: transactions.length,
+        totals,
+        data: transactions
     });
-  } catch (err) {
-    next(err);
-  }
 };
 
 // Get single transaction
-exports.getTransaction = async (req, res, next) => {
-  try {
+const getTransaction = async (req, res) => {
     const transaction = await Transaction.findOne({
-      _id: req.params.id,
-      userId: req.user.id
+        _id: req.params.id,
+        userId: req.user.userId
     });
 
     if (!transaction) {
-      return next(new ErrorResponse('Transaction not found', 404));
+        throw new NotFoundError('Transaction not found');
     }
 
-    res.json({
-      success: true,
-      data: transaction
+    res.status(200).json({
+        success: true,
+        data: transaction
     });
-  } catch (err) {
-    next(err);
-  }
 };
 
-// Add new transaction
-exports.addTransaction = async (req, res, next) => {
-  try {
-    const { type, amount, category, description, date } = req.body;
+// Add transaction
+const addTransaction = async (req, res) => {
+    const { type, amount, category, description, date, walletId } = req.body;
 
-    // Validate required fields
-    if (!type || !amount || !category) {
-      return next(new ErrorResponse('Please provide type, amount and category', 400));
-    }
-
-    // Validate amount
-    if (amount <= 0) {
-      return next(new ErrorResponse('Amount must be greater than 0', 400));
-    }
-
-    // Validate type
-    if (!['income', 'expense'].includes(type)) {
-      return next(new ErrorResponse('Type must be either income or expense', 400));
-    }
-
-    const newTransaction = new Transaction({
-      userId: req.user.id,
-      type,
-      amount,
-      category,
-      description,
-      date: date || Date.now()
+    // Validate wallet exists and belongs to user
+    const wallet = await Wallet.findOne({
+        _id: walletId,
+        userId: req.user.userId
     });
 
-    await newTransaction.save();
-    
+    if (!wallet) {
+        throw new NotFoundError('Wallet not found');
+    }
+
+    // Create transaction
+    const transaction = await Transaction.create({
+        userId: req.user.userId,
+        walletId,
+        type,
+        amount,
+        category,
+        description,
+        date: date || Date.now()
+    });
+
+    // Update wallet balance
+    if (type === 'income') {
+        wallet.balance += amount;
+    } else {
+        if (wallet.balance < amount) {
+            throw new BadRequestError('Insufficient balance in wallet');
+        }
+        wallet.balance -= amount;
+    }
+    wallet.lastUpdated = Date.now();
+    await wallet.save();
+
     res.status(201).json({
-      success: true,
-      data: newTransaction
+        success: true,
+        data: transaction
     });
-  } catch (err) {
-    next(err);
-  }
 };
 
 // Update transaction
-exports.updateTransaction = async (req, res, next) => {
-  try {
-    const { type, amount, category, description, date } = req.body;
+const updateTransaction = async (req, res) => {
+    const { type, amount, category, description, date, walletId } = req.body;
 
-    // Find transaction
-    let transaction = await Transaction.findOne({
-      _id: req.params.id,
-      userId: req.user.id
+    const transaction = await Transaction.findOne({
+        _id: req.params.id,
+        userId: req.user.userId
     });
 
     if (!transaction) {
-      return next(new ErrorResponse('Transaction not found', 404));
+        throw new NotFoundError('Transaction not found');
     }
 
-    // Validate amount if provided
-    if (amount !== undefined && amount <= 0) {
-      return next(new ErrorResponse('Amount must be greater than 0', 400));
+    // Get old wallet and new wallet (if changed)
+    const oldWallet = await Wallet.findOne({
+        _id: transaction.walletId,
+        userId: req.user.userId
+    });
+
+    let newWallet = oldWallet;
+    if (walletId && walletId !== transaction.walletId.toString()) {
+        newWallet = await Wallet.findOne({
+            _id: walletId,
+            userId: req.user.userId
+        });
+        if (!newWallet) {
+            throw new NotFoundError('New wallet not found');
+        }
     }
 
-    // Validate type if provided
-    if (type && !['income', 'expense'].includes(type)) {
-      return next(new ErrorResponse('Type must be either income or expense', 400));
-    }
+    // Calculate balance changes
+    const oldAmount = transaction.amount;
+    const newAmount = amount || oldAmount;
+    const oldType = transaction.type;
+    const newType = type || oldType;
 
-    // Update fields
+    // Update old wallet balance
+    if (oldType === 'income') {
+        oldWallet.balance -= oldAmount;
+    } else {
+        oldWallet.balance += oldAmount;
+    }
+    oldWallet.lastUpdated = Date.now();
+    await oldWallet.save();
+
+    // Update new wallet balance
+    if (newType === 'income') {
+        newWallet.balance += newAmount;
+    } else {
+        if (newWallet.balance < newAmount) {
+            throw new BadRequestError('Insufficient balance in wallet');
+        }
+        newWallet.balance -= newAmount;
+    }
+    newWallet.lastUpdated = Date.now();
+    await newWallet.save();
+
+    // Update transaction
     if (type) transaction.type = type;
     if (amount) transaction.amount = amount;
     if (category) transaction.category = category;
-    if (description !== undefined) transaction.description = description;
+    if (description) transaction.description = description;
     if (date) transaction.date = date;
+    if (walletId) transaction.walletId = walletId;
 
     await transaction.save();
 
-    res.json({
-      success: true,
-      data: transaction
+    res.status(200).json({
+        success: true,
+        data: transaction
     });
-  } catch (err) {
-    next(err);
-  }
 };
 
 // Delete transaction
-exports.deleteTransaction = async (req, res, next) => {
-  try {
+const deleteTransaction = async (req, res) => {
     const transaction = await Transaction.findOne({
-      _id: req.params.id,
-      userId: req.user.id
+        _id: req.params.id,
+        userId: req.user.userId
     });
 
     if (!transaction) {
-      return next(new ErrorResponse('Transaction not found', 404));
+        throw new NotFoundError('Transaction not found');
     }
 
-    await transaction.deleteOne();
-
-    res.json({
-      success: true,
-      data: {}
+    // Update wallet balance
+    const wallet = await Wallet.findOne({
+        _id: transaction.walletId,
+        userId: req.user.userId
     });
-  } catch (err) {
-    next(err);
-  }
+
+    if (transaction.type === 'income') {
+        wallet.balance -= transaction.amount;
+    } else {
+        wallet.balance += transaction.amount;
+    }
+    wallet.lastUpdated = Date.now();
+    await wallet.save();
+
+    await transaction.remove();
+
+    res.status(200).json({
+        success: true,
+        data: {}
+    });
+};
+
+module.exports = {
+    getTransactions,
+    getTransaction,
+    addTransaction,
+    updateTransaction,
+    deleteTransaction
 };
