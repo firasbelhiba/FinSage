@@ -27,7 +27,7 @@ app.use(cors());
 app.use('/api/auth', authRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/budget', budgetRoutes);
-app.use('/api/category', categoryRoutes);
+app.use('/api/categories', categoryRoutes);
 app.use('/api/wallets', walletRoutes);
 
 // Error handler (should be last piece of middleware)
