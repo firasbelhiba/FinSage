@@ -6,10 +6,10 @@ const {
   addOrUpdateBudget,
   deleteBudget
 } = require('../controllers/budgetController');
-const auth = require('../middleware/auth');
+const { authenticateUser } = require('../middleware/authentication');
 
-// All routes are protected
-router.use(auth);
+// Apply authentication middleware to all routes
+router.use(authenticateUser);
 
 // Get all budgets (with optional month/year filter)
 router.get('/', getBudgets);

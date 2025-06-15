@@ -7,10 +7,10 @@ const {
   updateCategory,
   deleteCategory
 } = require('../controllers/categoryController');
-const auth = require('../middleware/auth');
+const { authenticateUser } = require('../middleware/authentication');
 
-// All routes are protected
-router.use(auth);
+// Apply authentication middleware to all routes
+router.use(authenticateUser);
 
 // Get all categories (with optional type filter)
 router.get('/', getCategories);

@@ -2,6 +2,8 @@ const User = require('../models/User');
 const Category = require('../models/Category');
 const jwt = require('jsonwebtoken');
 const ErrorResponse = require('../utils/errorResponse');
+const Wallet = require('../models/Wallet');
+const { BadRequestError, UnauthorizedError } = require('../errors');
 
 // Default categories to create for new users
 const defaultCategories = [
@@ -21,19 +23,31 @@ const defaultCategories = [
 ];
 
 // Register User
-exports.register = async (req, res, next) => {
+const register = async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { name, email, password } = req.body;
 
-    // Check if user exists
-    let user = await User.findOne({ email });
-    if (user) {
-      return next(new ErrorResponse('User already exists', 400));
+    // Check if user already exists
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      throw new BadRequestError('User already exists');
     }
 
     // Create user
-    user = new User({ email, password, name });
-    await user.save();
+    const user = await User.create({
+      name,
+      email,
+      password
+    });
+
+    // Create default wallet
+    await Wallet.create({
+      userId: user._id,
+      name: 'Main Wallet',
+      currency: 'USD',
+      balance: 0,
+      isDefault: true
+    });
 
     // Create default categories for the new user
     const categories = defaultCategories.map(category => ({
@@ -43,73 +57,86 @@ exports.register = async (req, res, next) => {
     await Category.insertMany(categories);
 
     // Create token
-    const payload = { user: { id: user.id } };
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const token = jwt.sign(
+      { id: user._id, name: user.name },
+      process.env.JWT_SECRET,
+      { expiresIn: '30d' }
+    );
 
     res.status(201).json({
       success: true,
-      token
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email
+      }
     });
-  } catch (err) {
-    next(err);
+  } catch (error) {
+    console.error('Registration error:', error);
+    throw error;
   }
 };
 
 // Login User
-exports.login = async (req, res, next) => {
+const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validate email & password
-    if (!email || !password) {
-      return next(new ErrorResponse('Please provide an email and password', 400));
-    }
-
-    // Check for user and include password field
-    const user = await User.findOne({ email }).select('+password');
+    // Check if user exists
+    const user = await User.findOne({ email });
     if (!user) {
-      return next(new ErrorResponse('Invalid credentials', 401));
+      throw new UnauthorizedError('Invalid credentials');
     }
 
     // Check if password matches
-    const isMatch = await user.comparePassword(password);
+    const isMatch = await user.matchPassword(password);
     if (!isMatch) {
-      return next(new ErrorResponse('Invalid credentials', 401));
+      throw new UnauthorizedError('Invalid credentials');
     }
 
     // Create token
-    const payload = { user: { id: user.id } };
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const token = jwt.sign(
+      { id: user._id, name: user.name },
+      process.env.JWT_SECRET,
+      { expiresIn: '30d' }
+    );
 
-    res.json({
+    res.status(200).json({
       success: true,
-      token
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email
+      }
     });
-  } catch (err) {
-    next(err);
+  } catch (error) {
+    console.error('Login error:', error);
+    throw error;
   }
 };
 
-exports.verifyToken = async (req, res) => {
+// Get current user
+const getCurrentUser = async (req, res) => {
   try {
-    // Get the user from the database using the ID from the token
-    const user = await User.findById(req.user.id);
-
+    const user = await User.findById(req.user.userId).select('-password');
     if (!user) {
-      return res.status(401).json({ success: false, message: "User not found" });
+      throw new NotFoundError('User not found');
     }
 
-    // Respond with the user data (excluding sensitive information)
-    res.json({
+    res.status(200).json({
       success: true,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email
-      },
-      message: "Token is valid"
+      data: user
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Internal server error" });
+    console.error('Get current user error:', error);
+    throw error;
   }
+};
+
+module.exports = {
+  register,
+  login,
+  getCurrentUser
 };
