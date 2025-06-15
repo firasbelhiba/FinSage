@@ -1,6 +1,7 @@
 const express = require('express');
-const dotenv = require('dotenv');
+const mongoose = require('mongoose');
 const cors = require('cors');
+const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 const errorHandler = require('./middleware/error');
 const authRoutes = require('./routes/auth');
@@ -17,11 +18,17 @@ connectDB();
 
 const app = express();
 
+// CORS configuration
+app.use(cors({
+    origin: '*', // Allow all origins
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+    credentials: true,
+    maxAge: 86400 // 24 hours
+}));
+
 // Body parser
 app.use(express.json());
-
-// Enable CORS
-app.use(cors());
 
 // Mount routers
 app.use('/api/auth', authRoutes);
