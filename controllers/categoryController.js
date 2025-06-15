@@ -7,7 +7,7 @@ exports.getCategories = async (req, res, next) => {
     const { type } = req.query;
     
     // Build query
-    const query = { userId: req.user.id };
+    const query = { userId: req.user.userId };
     
     // Add type filter if provided
     if (type) {
@@ -31,7 +31,7 @@ exports.getCategory = async (req, res, next) => {
   try {
     const category = await Category.findOne({
       _id: req.params.id,
-      userId: req.user.id
+      userId: req.user.userId
     });
 
     if (!category) {
@@ -64,7 +64,7 @@ exports.createCategory = async (req, res, next) => {
 
     // Check if category already exists for this user
     const existingCategory = await Category.findOne({
-      userId: req.user.id,
+      userId: req.user.userId,
       name: name.toLowerCase()
     });
 
@@ -73,7 +73,7 @@ exports.createCategory = async (req, res, next) => {
     }
 
     const category = await Category.create({
-      userId: req.user.id,
+      userId: req.user.userId,
       name: name.toLowerCase(),
       type,
       icon: icon || 'default',
@@ -97,7 +97,7 @@ exports.updateCategory = async (req, res, next) => {
     // Find category
     let category = await Category.findOne({
       _id: req.params.id,
-      userId: req.user.id
+      userId: req.user.userId
     });
 
     if (!category) {
@@ -112,7 +112,7 @@ exports.updateCategory = async (req, res, next) => {
     // Check if new name already exists
     if (name && name !== category.name) {
       const existingCategory = await Category.findOne({
-        userId: req.user.id,
+        userId: req.user.userId,
         name: name.toLowerCase()
       });
 
@@ -143,7 +143,7 @@ exports.deleteCategory = async (req, res, next) => {
   try {
     const category = await Category.findOne({
       _id: req.params.id,
-      userId: req.user.id
+      userId: req.user.userId
     });
 
     if (!category) {
