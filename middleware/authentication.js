@@ -5,17 +5,23 @@ const authenticateUser = async (req, res, next) => {
     try {
         // Get token from header
         const authHeader = req.headers.authorization;
+        console.log('Auth header:', authHeader);
+        
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            console.log('Invalid auth header format');
             throw new UnauthorizedError('Authentication invalid');
         }
 
         const token = authHeader.split(' ')[1];
+        console.log('Token:', token);
 
         try {
             const payload = jwt.verify(token, process.env.JWT_SECRET);
+            console.log('Token payload:', payload);
             
             // Check if payload has the required fields
             if (!payload.id) {
+                console.log('Missing id in token payload');
                 throw new UnauthorizedError('Invalid token payload');
             }
 
