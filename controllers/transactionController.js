@@ -140,16 +140,32 @@ const addTransaction = async (req, res) => {
 const updateTransaction = async (req, res) => {
     try {
         const { type, amount, category, description, date, walletId } = req.body;
+        
+        console.log('Debug - Update Transaction Request:');
+        console.log('Transaction ID from params:', req.params.id);
+        console.log('User ID from request:', req.user.userId);
+        console.log('Request body:', req.body);
 
         // Validate transaction ID
         if (!req.params.id) {
             throw new BadRequestError('Transaction ID is required');
         }
 
-        const transaction = await Transaction.findOne({
+        // Find the transaction and log the query
+        const transactionQuery = {
             _id: req.params.id,
             userId: req.user.userId
-        });
+        };
+        console.log('Finding transaction with query:', transactionQuery);
+
+        const transaction = await Transaction.findOne(transactionQuery);
+        console.log('Found transaction:', transaction ? {
+            id: transaction._id,
+            type: transaction.type,
+            amount: transaction.amount,
+            walletId: transaction.walletId,
+            userId: transaction.userId
+        } : 'No transaction found');
 
         if (!transaction) {
             throw new NotFoundError('Transaction not found');
@@ -157,6 +173,7 @@ const updateTransaction = async (req, res) => {
 
         // Validate transaction has walletId
         if (!transaction.walletId) {
+            console.log('Transaction data:', JSON.stringify(transaction, null, 2));
             throw new Error('Transaction is missing walletId');
         }
 
@@ -165,6 +182,12 @@ const updateTransaction = async (req, res) => {
             _id: transaction.walletId,
             userId: req.user.userId
         });
+
+        console.log('Found old wallet:', oldWallet ? {
+            id: oldWallet._id,
+            name: oldWallet.name,
+            balance: oldWallet.balance
+        } : 'No old wallet found');
 
         if (!oldWallet) {
             throw new NotFoundError('Original wallet not found');
@@ -176,11 +199,23 @@ const updateTransaction = async (req, res) => {
             const currentWalletId = transaction.walletId.toString();
             const newWalletId = walletId.toString();
             
+            console.log('Wallet ID comparison:', {
+                currentWalletId,
+                newWalletId,
+                isDifferent: newWalletId !== currentWalletId
+            });
+            
             if (newWalletId !== currentWalletId) {
                 newWallet = await Wallet.findOne({
                     _id: walletId,
                     userId: req.user.userId
                 });
+                console.log('Found new wallet:', newWallet ? {
+                    id: newWallet._id,
+                    name: newWallet.name,
+                    balance: newWallet.balance
+                } : 'No new wallet found');
+                
                 if (!newWallet) {
                     throw new NotFoundError('New wallet not found');
                 }
