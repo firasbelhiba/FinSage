@@ -40,8 +40,8 @@ exports.login = async (req, res, next) => {
       return next(new ErrorResponse('Please provide an email and password', 400));
     }
 
-    // Check for user
-    const user = await User.findOne({ email });
+    // Check for user and include password field
+    const user = await User.findOne({ email }).select('+password');
     if (!user) {
       return next(new ErrorResponse('Invalid credentials', 401));
     }
