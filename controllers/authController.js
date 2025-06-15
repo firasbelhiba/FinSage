@@ -64,3 +64,28 @@ exports.login = async (req, res, next) => {
     next(err);
   }
 };
+
+
+exports.verifyToken = async (req, res) => {
+  try {
+    // Get the user from the database using the ID from the token
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: "User not found" });
+    }
+
+    // Respond with the user data (excluding sensitive information)
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email
+      },
+      message: "Token is valid"
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
