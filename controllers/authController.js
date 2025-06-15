@@ -1,6 +1,24 @@
 const User = require('../models/User');
+const Category = require('../models/Category');
 const jwt = require('jsonwebtoken');
 const ErrorResponse = require('../utils/errorResponse');
+
+// Default categories to create for new users
+const defaultCategories = [
+  // Income categories
+  { name: 'salary', type: 'income', icon: 'money-bill', color: '#4CAF50', isDefault: true },
+  { name: 'freelance', type: 'income', icon: 'laptop', color: '#2196F3', isDefault: true },
+  { name: 'investments', type: 'income', icon: 'chart-line', color: '#9C27B0', isDefault: true },
+  
+  // Expense categories
+  { name: 'food', type: 'expense', icon: 'utensils', color: '#FF9800', isDefault: true },
+  { name: 'transport', type: 'expense', icon: 'car', color: '#607D8B', isDefault: true },
+  { name: 'utilities', type: 'expense', icon: 'bolt', color: '#FFC107', isDefault: true },
+  { name: 'rent', type: 'expense', icon: 'home', color: '#E91E63', isDefault: true },
+  { name: 'entertainment', type: 'expense', icon: 'film', color: '#795548', isDefault: true },
+  { name: 'shopping', type: 'expense', icon: 'shopping-cart', color: '#009688', isDefault: true },
+  { name: 'health', type: 'expense', icon: 'heartbeat', color: '#F44336', isDefault: true }
+];
 
 // Register User
 exports.register = async (req, res, next) => {
@@ -16,6 +34,13 @@ exports.register = async (req, res, next) => {
     // Create user
     user = new User({ email, password, name });
     await user.save();
+
+    // Create default categories for the new user
+    const categories = defaultCategories.map(category => ({
+      ...category,
+      userId: user.id
+    }));
+    await Category.insertMany(categories);
 
     // Create token
     const payload = { user: { id: user.id } };
@@ -64,7 +89,6 @@ exports.login = async (req, res, next) => {
     next(err);
   }
 };
-
 
 exports.verifyToken = async (req, res) => {
   try {
