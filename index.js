@@ -9,6 +9,7 @@ const transactionRoutes = require('./routes/transactions');
 const budgetRoutes = require('./routes/budget');
 const categoryRoutes = require('./routes/categories');
 const walletRoutes = require('./routes/wallets');
+const scheduledTransactionRoutes = require('./routes/scheduledTransactions');
 
 // Load env vars
 dotenv.config();
@@ -36,6 +37,7 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/budget', budgetRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/wallets', walletRoutes);
+app.use('/api/scheduled-transactions', scheduledTransactionRoutes);
 
 // Error handler (should be last piece of middleware)
 app.use((err, req, res, next) => {
