@@ -67,7 +67,7 @@ const getTransaction = async (req, res) => {
 // Add transaction
 const addTransaction = async (req, res) => {
     try {
-        const { type, amount, category, description, date, walletId } = req.body;
+        const { type, amount, category, description, date, walletId, affectBalance } = req.body;
 
         // Validate required fields
         if (!type || !amount || !category) {
@@ -111,20 +111,23 @@ const addTransaction = async (req, res) => {
             amount,
             category,
             description: description || '', // Make description optional
-            date: date || Date.now()
+            date: date || Date.now(),
+            affectBalance: affectBalance !== undefined ? affectBalance : true
         });
 
-        // Update wallet balance
-        if (type === 'income') {
-            wallet.balance += amount;
-        } else {
-            if (wallet.balance < amount) {
-                throw new BadRequestError('Insufficient balance in wallet');
+        // Update wallet balance only if affectBalance is true
+        if (affectBalance !== false) {
+            if (type === 'income') {
+                wallet.balance += amount;
+            } else {
+                if (wallet.balance < amount) {
+                    throw new BadRequestError('Insufficient balance in wallet');
+                }
+                wallet.balance -= amount;
             }
-            wallet.balance -= amount;
+            wallet.lastUpdated = Date.now();
+            await wallet.save();
         }
-        wallet.lastUpdated = Date.now();
-        await wallet.save();
 
         res.status(201).json({
             success: true,
@@ -139,7 +142,7 @@ const addTransaction = async (req, res) => {
 // Update transaction
 const updateTransaction = async (req, res) => {
     try {
-        const { type, amount, category, description, date, walletId } = req.body;
+        const { type, amount, category, description, date, walletId, affectBalance } = req.body;
         
         console.log('Debug - Update Transaction Request:');
         console.log('Transaction ID from params:', req.params.id);
@@ -171,41 +174,17 @@ const updateTransaction = async (req, res) => {
             throw new NotFoundError('Transaction not found');
         }
 
-        // If walletId is missing, use the one from the request
-        if (!transaction.walletId && walletId) {
-            console.log('Adding missing walletId to transaction:', walletId);
-            transaction.walletId = walletId;
-        } else if (!transaction.walletId) {
-            // If no walletId in transaction and none provided in request, find default wallet
-            const defaultWallet = await Wallet.findOne({
-                userId: req.user.userId,
-                isDefault: true
-            });
-            
-            if (!defaultWallet) {
-                throw new Error('No default wallet found. Please provide a walletId.');
-            }
-            
-            console.log('Using default wallet:', defaultWallet._id);
-            transaction.walletId = defaultWallet._id;
-        }
-
-        // Get old wallet and new wallet (if changed)
+        // Find the current wallet
         const oldWallet = await Wallet.findOne({
             _id: transaction.walletId,
             userId: req.user.userId
         });
 
-        console.log('Found old wallet:', oldWallet ? {
-            id: oldWallet._id,
-            name: oldWallet.name,
-            balance: oldWallet.balance
-        } : 'No old wallet found');
-
         if (!oldWallet) {
-            throw new NotFoundError('Original wallet not found');
+            throw new NotFoundError('Wallet not found');
         }
 
+        // Find the new wallet if walletId is provided
         let newWallet = oldWallet;
         if (walletId) {
             // Safely compare wallet IDs
@@ -240,35 +219,42 @@ const updateTransaction = async (req, res) => {
         const newAmount = amount || oldAmount;
         const oldType = transaction.type;
         const newType = type || oldType;
+        const oldAffectBalance = transaction.affectBalance;
+        const newAffectBalance = affectBalance !== undefined ? affectBalance : oldAffectBalance;
 
-        // Update old wallet balance
-        if (oldType === 'income') {
-            oldWallet.balance -= oldAmount;
-        } else {
-            oldWallet.balance += oldAmount;
-        }
-        oldWallet.lastUpdated = Date.now();
-        await oldWallet.save();
-
-        // Update new wallet balance
-        if (newType === 'income') {
-            newWallet.balance += newAmount;
-        } else {
-            if (newWallet.balance < newAmount) {
-                throw new BadRequestError('Insufficient balance in wallet');
+        // Update old wallet balance if the old transaction affected balance
+        if (oldAffectBalance) {
+            if (oldType === 'income') {
+                oldWallet.balance -= oldAmount;
+            } else {
+                oldWallet.balance += oldAmount;
             }
-            newWallet.balance -= newAmount;
+            oldWallet.lastUpdated = Date.now();
+            await oldWallet.save();
         }
-        newWallet.lastUpdated = Date.now();
-        await newWallet.save();
+
+        // Update new wallet balance if the new transaction should affect balance
+        if (newAffectBalance) {
+            if (newType === 'income') {
+                newWallet.balance += newAmount;
+            } else {
+                if (newWallet.balance < newAmount) {
+                    throw new BadRequestError('Insufficient balance in wallet');
+                }
+                newWallet.balance -= newAmount;
+            }
+            newWallet.lastUpdated = Date.now();
+            await newWallet.save();
+        }
 
         // Update transaction
         if (type) transaction.type = type;
         if (amount) transaction.amount = amount;
         if (category) transaction.category = category;
-        if (description) transaction.description = description;
+        if (description !== undefined) transaction.description = description;
         if (date) transaction.date = date;
         if (walletId) transaction.walletId = walletId;
+        if (affectBalance !== undefined) transaction.affectBalance = affectBalance;
 
         await transaction.save();
 
@@ -294,19 +280,21 @@ const deleteTransaction = async (req, res) => {
             throw new NotFoundError('Transaction not found');
         }
 
-        // Update wallet balance
-        const wallet = await Wallet.findOne({
-            _id: transaction.walletId,
-            userId: req.user.userId
-        });
+        // Update wallet balance only if the transaction affected balance
+        if (transaction.affectBalance) {
+            const wallet = await Wallet.findOne({
+                _id: transaction.walletId,
+                userId: req.user.userId
+            });
 
-        if (transaction.type === 'income') {
-            wallet.balance -= transaction.amount;
-        } else {
-            wallet.balance += transaction.amount;
+            if (transaction.type === 'income') {
+                wallet.balance -= transaction.amount;
+            } else {
+                wallet.balance += transaction.amount;
+            }
+            wallet.lastUpdated = Date.now();
+            await wallet.save();
         }
-        wallet.lastUpdated = Date.now();
-        await wallet.save();
 
         // Use deleteOne instead of remove
         await Transaction.deleteOne({ _id: transaction._id });
