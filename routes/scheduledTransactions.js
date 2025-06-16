@@ -1,15 +1,16 @@
 const express = require('express');
 const router = express.Router();
+const { protect } = require('../middleware/authMiddleware');
 const {
     getScheduledTransactions,
     createScheduledTransaction,
     updateScheduledTransaction,
-    deleteScheduledTransaction
+    deleteScheduledTransaction,
+    executeScheduledTransactions,
 } = require('../controllers/scheduledTransactionController');
-const { authenticateUser } = require('../middleware/auth');
 
-// All routes require authentication
-router.use(authenticateUser);
+// Protect all routes
+router.use(protect);
 
 // Get all scheduled transactions
 router.get('/', getScheduledTransactions);
@@ -22,5 +23,8 @@ router.put('/:id', updateScheduledTransaction);
 
 // Delete scheduled transaction
 router.delete('/:id', deleteScheduledTransaction);
+
+// Execute scheduled transactions
+router.post('/execute', executeScheduledTransactions);
 
 module.exports = router; 
