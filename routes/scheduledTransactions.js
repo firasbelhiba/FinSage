@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/authMiddleware');
+const { authenticateUser } = require('../middleware/auth');
 const {
     getScheduledTransactions,
     createScheduledTransaction,
@@ -10,7 +10,7 @@ const {
 } = require('../controllers/scheduledTransactionController');
 
 // Protect all routes
-router.use(protect);
+router.use(authenticateUser);
 
 // Get all scheduled transactions
 router.get('/', getScheduledTransactions);
